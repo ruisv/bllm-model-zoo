@@ -1,0 +1,60 @@
+{
+  "model": "phi4-mini",
+  "upstream": "microsoft/Phi-4-mini-instruct",
+  "arch": "dense",
+  "note": "3.8B dense. NOT an official OE-LLM architecture — converted by remapping onto the qwen2.5-7b leap recipe (both dense, head_dim 128) plus a partial-rotary patch. The head_dim==128 match is the hard gate for this remap route; an arch with a different head_dim does not go through it.",
+  "quantisation": {
+    "weights": "int8 per-channel",
+    "activations": "int16 per-tensor (static)",
+    "note": "Same static leap.linear path as the Qwen dense models."
+  },
+  "chat": {
+    "format": "phi",
+    "note": "A distinct chat format, not chatml. A turn is <role>content<|end|> with no role text and no newline; the previous assistant turn is closed by re-emitting <|end|> next turn (it is an eos, so it is not left in the cache). bllm-make-model-dir auto-detects the markers and emits format:'phi'. Marker ids: <|user|>200021 <|assistant|>200019 <|system|>200022 <|end|>200020."
+  },
+  "variants": [
+    {
+      "name": "phi4-mini-ctx1k-int8-s100",
+      "cache_len": 1024,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "toolchain": {
+        "recipe": "qwen2.5-7b + partial-rotary patch (remap)",
+        "board_system": "4.0.5",
+        "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
+      },
+      "measured": {
+        "note": "On S100P, quiet board, performance mode on. Single request, single thread.",
+        "decode_tok_s": 8.7,
+        "hbm_mb": 4700,
+        "ppl": {"dataset": "wikitext2", "value": null}
+      },
+      "task_metric": {
+        "name": "coherence-anchors",
+        "protocol": "EN factual (Paris), multi-turn name recall (proves the phi turn open/close), clean stop on <|end|> (no marker leak into the reply)",
+        "threshold": "all anchors pass",
+        "measured": "pass"
+      }
+    }
+  ],
+  "rejected_builds": [
+    {
+      "name": "chatml format on Phi-4-mini",
+      "why": "Phi does not use ChatML. With the wrong format the turns are framed with <|im_start|>/<|im_end|> the model was not trained on — it still generates, but drifts and does not stop cleanly. The phi format (role-marker + <|end|>) is required. bllm-make-model-dir auto-detects it; do not force chatml."
+    },
+    {
+      "name": "wrong eos",
+      "why": "If <|end|> (200020) is not registered as eos, the model never stops (generates to max_new every turn) or leaks the marker into the reply. eos is resolved by bllm-make-model-dir from the tokenizer's markers — never hand-set it. A mis-set eos is the single most common silent LLM-packaging failure."
+    },
+    {
+      "name": "missing partial-rotary patch",
+      "why": "Phi uses partial rotary (only part of head_dim rotated). Remapping onto the full-rotary qwen recipe without the partial-rotary patch mis-applies rope to the non-rotated dims — the model loads and runs but degenerates. The patch is part of the remap recipe."
+    }
+  ],
+  "board_verification": {
+    "date": "2026-07-13",
+    "board": "S100P (sw 4.0.5)",
+    "flow": "conda install bllm=0.1.1; bllm.load(dir).chat() — Paris, multi-turn name recall, clean stop on <|end|>, no marker leak. Customer E2E from a fresh conda env passed.",
+    "decode_tok_s": 8.7
+  }
+}

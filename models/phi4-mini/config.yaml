@@ -1,0 +1,38 @@
+# Compile knobs for Phi-4-mini (dense, 3.8B), BLLM native runtime.
+# An architecture the official OE-LLM toolchain does not ship — converted by
+# REMAPPING onto the qwen2.5-7b recipe (both dense, head_dim 128) plus a
+# partial-rotary patch. The graph source is private (see repo README); this
+# records the decisions that define the build.
+
+model:
+  upstream: "microsoft/Phi-4-mini-instruct"
+  arch: dense
+  params: 3.8B
+  hidden: 3072
+  head_dim: 128                # the hard gate for the remap route — must be 128
+  rotary: partial              # partial-rotary: only part of head_dim is rotated
+  remap_recipe: qwen2.5-7b     # dense sibling the leap recipe is borrowed from
+
+quantise:
+  weights: int8                # per-channel, static const_fake_quant + leap.linear
+  activations: int16           # per-tensor static
+  note: "Same static int8/int16 path as the Qwen dense models. Decode must use the static leap.linear path, not block_quantized_matmul (that is a prefill op, ~6 s/token in decode)."
+
+compile:
+  march: nash-m                # S100 / S100P
+  cache_len: 1024              # the shipped Phi4_mini_1024 build
+  bpu_cores: 1
+
+chat:
+  format: phi                  # a distinct chat format (NOT chatml) — see README
+  markers:                     # auto-detected by bllm-make-model-dir from the tokenizer
+    user: 200021               # <|user|>
+    assistant: 200019          # <|assistant|>
+    system: 200022             # <|system|>
+    end: 200020                # <|end|>  (also eos)
+
+emit:
+  tool: bllm-make-model-dir    # auto-detects the phi markers -> format:"phi"
+  arch: dense
+  needs: [hbm, tokenizer.json]
+  name: "Phi-4-mini · ctx1k · int8 · RDK S100/S100P"

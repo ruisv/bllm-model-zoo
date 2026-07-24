@@ -45,7 +45,7 @@ licences.** A compiled `.hbm` is a derivative of upstream weights.
 |---|---|---|---|---|
 | **Qwen3.5-0.8B** | hybrid (Gated-DeltaNet SSM) | native (BLLM-only) | complete | 21.5 tok/s · 100% BPU int8 |
 | Qwen3.5-2B / 4B | hybrid | native | recipe | 14.6 / 6.9 tok/s |
-| Phi-4-mini | dense | native | recipe | ~9 tok/s |
+| **Phi-4-mini** | dense | native | complete | 8.7 tok/s · remap+phi format |
 | GLM-Edge | dense | native | planned | — |
 | Qwen2.5-1.5B / 7B | dense | oellm-official | recipe | 24.5 / 6.4 tok/s |
 | Qwen2.5-Omni-3B | omni (text+image+audio+video) | oellm-official | recipe | 14 tok/s |
