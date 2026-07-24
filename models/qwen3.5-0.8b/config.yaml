@@ -1,0 +1,38 @@
+# Compile knobs for Qwen3.5-0.8B (hybrid Gated-DeltaNet SSM), BLLM native runtime.
+# These are the parameters that define a build; the graph construction itself is
+# the native toolchain (not published — see repo README). Feed this to the native
+# compile driver, then common/make_dir.py to emit the bllm.load()-ready directory.
+
+model:
+  upstream: "Qwen/Qwen3.5-0.8B"
+  arch: hybrid                 # 18 Gated-DeltaNet layers + 6 full-attention
+  hidden: 1024
+  layers: 24
+  gdn: {heads: 16, head_dim: 128, conv_kernel: 4}
+  attn: {q_heads: 8, kv_heads: 2, head_dim: 256, rope_theta: 1.0e7, rotary_dim: 64}
+  drop: [vision, mtp]          # text package; the VLM recipe keeps vision
+
+quantise:
+  weights: int8                # per-channel, const_fake_quant, static leap.linear path
+  activations: int16           # per-tensor, data-free flat ranges (0.8B fits; 4B needs calib)
+  keep_fp32: [ssm_state, conv, rmsnorm, gdn_gated_norm]
+  gating_lut: int16            # sigmoid/silu/softplus/exp -> b30.lut so 100% BPU
+
+compile:
+  march: nash-m                # nash-m = S100/S100P; nash-p = S600 (see bpu_cores)
+  cache_len: 2048              # a performance knob, not only capacity — emit multiple
+  bpu_cores: 1                 # S600 large models bind 2/4 cores; 0.8B stays single
+  prefill:
+    kind: chunked-float        # [C,C] intermediates float on CPU (shipped, 2.30s image TTFT)
+    N: 32                      # prefill chunk (tokens per graph run)
+    C: 16                      # GDN sub-chunk for the parallel delta-rule
+    # all-BPU alternative (block-recursive inverse, int16) is numerically correct but
+    # needs max_time_per_fc to split the fused segment or hbcompile is impractically
+    # slow — see expected.json rejected_builds.
+
+emit:
+  # common/make_dir.py wraps this — the ONLY writer of model.json
+  tool: bllm-make-model-dir
+  arch: hybrid
+  needs: [hbm, embed_tokens.bin, tokenizer.json]
+  name: "Qwen3.5-0.8B · ctx2k · int8 · RDK S100/S100P (100% BPU)"

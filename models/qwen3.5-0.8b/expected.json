@@ -1,0 +1,78 @@
+{
+  "model": "qwen3.5-0.8b",
+  "upstream": "Qwen/Qwen3.5-0.8B",
+  "arch": "hybrid",
+  "note": "Hybrid Gated-DeltaNet (18 GDN layers) + full-attention (6 layers). NOT an official OE-LLM architecture (head_dim 256, linear-attention SSM) — libxlm cannot run it; this is BLLM-native only. The vision half of the checkpoint is dropped for the text package (see the qwen3.5-vlm recipe for image+text).",
+  "quantisation": {
+    "weights": "int8 per-channel",
+    "activations": "int16 per-tensor (static, data-free)",
+    "kept_fp32": "SSM recurrence, depthwise conv, RMSNorms, GDN gated-norm",
+    "note": "Data-free: const_fake_quant int8 weight + int16 activation on the STATIC leap.linear path. No calibration dataset — int16 activations are forgiving at 0.8B. (4B needs per-linear activation calibration; 0.8B/2B fit flat ranges.) Gating ops (sigmoid/silu/softplus/exp) are int16 LUTs so the whole model is BPU."
+  },
+  "variants": [
+    {
+      "name": "qwen3.5-0.8b-ctx2k-int8-s100",
+      "cache_len": 2048,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32 (image TTFT 2.30s); all-BPU block-recursive is numerically solved but hbcompile is impractically slow, see note",
+      "toolchain": {
+        "oellm_build": "1.0.0",
+        "board_system": "4.0.5",
+        "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
+      },
+      "measured": {
+        "note": "On S100P, quiet board, performance mode on (register 0x2b047000 = 0x99, re-write and read back before every benchmark — it is not sticky). Single request, single thread.",
+        "decode_tok_s": 21.5,
+        "all_bpu": true,
+        "cpu_inference_time_cost_ms": 0.0,
+        "bpu_graph_ms": 44.1,
+        "fused_segments": 1,
+        "engine_per_token_ms": {"prep": 0.02, "infer": 46.04, "sample": 0.39, "note": "95% of the token is the BPU graph; host overhead ~5% (hbDNN call + cache management). decode 21.5 ~= graph ceiling 22.7."},
+        "effective_weight_bandwidth_GBps": 17.8,
+        "hbm_mb": 791,
+        "ppl": {"dataset": "wikitext2", "value": null},
+        "parity": {"vs": "decode", "first_token": "match", "greedy_48_tokens": "identical", "note": "float chunked prefill, 276-token prompt > chunk 32"}
+      },
+      "task_metric": {
+        "name": "coherence-anchors",
+        "protocol": "EN factual (Paris), ZH factual (北京), arithmetic (17x23=391), multi-turn name recall, thinking on/off",
+        "threshold": "all anchors pass",
+        "measured": "pass"
+      }
+    },
+    {
+      "name": "qwen3.5-0.8b-ctx4k-int8-s100",
+      "cache_len": 4096,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32",
+      "measured": {
+        "decode_tok_s": 18.65,
+        "all_bpu": true,
+        "note": "Slower than ctx2k: the larger KV window is more per-token traffic. cache_len is a performance knob, not only capacity."
+      }
+    }
+  ],
+  "rejected_builds": [
+    {
+      "name": "block_quantized_matmul (dynamic-quant decode)",
+      "decode_tok_s": 0.16,
+      "why": "The dynamic per-token quant path (block_quantized_matmul) is a PREFILL op — 51 ms per matmul at M=1, so ~6 s/token in decode. Decode must use the STATIC path (const_fake_quant int8 weight + int16 activation + leap.linear) = 0.33 ms/matmul."
+    },
+    {
+      "name": "all-BPU chunked prefill (Newton triangular inverse)",
+      "why": "Numerically wrong under int16: Newton doubling's 2I-AX transiently overshoots (~16 at C=64) and int16 calibrated to the final X clips it — cos -0.34 on deep layers. Forward substitution / block recursion are the stable inverses (cos 0.9998)."
+    },
+    {
+      "name": "all-BPU chunked prefill (forward-substitution or block-recursive inverse)",
+      "why": "Numerically correct (cos 0.9998, 100% BPU on convert) but hbcompile is impractically slow: its global instruction-scheduling pass over the single fused 18-layer segment is SERIAL (jobs idle) and super-linear in op count. Forward-sub blows memory unbounded (30 GB, 3.6 h); block-recursion is memory-bounded (13 GB) but 3 h+. The shipped answer is float [C,C] on CPU (2.30 s image TTFT). All-BPU purity here is not a performance win — prefill is compute-bound and the CPU/BPU split is already good."
+    }
+  ],
+  "board_verification": {
+    "date": "2026-07-24",
+    "board": "S100P (sw 4.0.5)",
+    "flow": "conda install bllm; bllm.load(dir).chat() — EN/ZH factual, math, multi-turn, thinking on/off all pass",
+    "decode_tok_s": 21.5
+  }
+}
