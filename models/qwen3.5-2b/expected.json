@@ -1,0 +1,58 @@
+{
+  "model": "qwen3.5-2b",
+  "upstream": "Qwen/Qwen3.5-2B",
+  "arch": "hybrid",
+  "note": "Same shape as qwen3.5-0.8b: 18 Gated-DeltaNet layers (symmetric key/value heads) + 6 full-attention layers. Only hidden (2048) and intermediate (6144) size scale up. NOT an official OE-LLM architecture; BLLM-native only. The vision half of the checkpoint is dropped for the text package (see the qwen3.5-vlm recipe for image+text).",
+  "quantisation": {
+    "weights": "int8 per-channel",
+    "activations": "int16 per-tensor (static, data-free)",
+    "kept_fp32": "SSM recurrence, depthwise conv, RMSNorms, GDN gated-norm",
+    "note": "Same data-free quantisation as qwen3.5-0.8b — flat int16 activation ranges fit at this size with no calibration set. (4B needs per-linear activation calibration; see the qwen3.5-4b recipe.)"
+  },
+  "variants": [
+    {
+      "name": "qwen3.5-2b-ctx4k-int8-s100",
+      "cache_len": 4096,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32, same recipe as qwen3.5-0.8b",
+      "toolchain": {
+        "board_system": "4.0.5",
+        "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
+      },
+      "measured": {
+        "note": "S100P, 2026-07-26, performance mode set (0x2b047000/0x2b047004 = 0x99, re-written and read back this session). Measured two ways: (1) hrt_model_exec perf directly on the decode .hbm, 30 frames, single thread, dedicated core; (2) chat() through the image+text package (same decode sub-graph as the text-only package), 3 repeated runs, decode_tok_s identical to 2 decimal places across all 3 (13.21, 13.22, 13.22). Board had another model's serving process stopped for the duration, restored afterward.",
+        "decode_tok_s": 13.22,
+        "all_bpu": true,
+        "cpu_inference_time_cost_ms": 0.0,
+        "bpu_graph_ms": 73.43,
+        "fused_segments": 1,
+        "effective_weight_bandwidth_GBps": 26.18,
+        "hbm_mb": 1922.2,
+        "ppl": {"dataset": "wikitext2", "value": null}
+      },
+      "task_metric": {
+        "name": "coherence-anchors",
+        "protocol": "EN factual (Paris), ZH factual (北京)",
+        "threshold": "all anchors pass",
+        "measured": "pass"
+      }
+    }
+  ],
+  "rejected_builds": [
+    {
+      "name": "block_quantized_matmul (dynamic-quant decode)",
+      "why": "Same failure as qwen3.5-0.8b: the dynamic per-token quant path is a PREFILL op, ~130x slower per matmul in decode than the static leap.linear path. Not independently re-measured at this size — the mechanism does not depend on model size."
+    },
+    {
+      "name": "all-BPU chunked prefill (Newton triangular inverse)",
+      "why": "Same numerical failure as qwen3.5-0.8b: Newton doubling's 2I-AX transiently overshoots and int16 clips it on deep layers. Not size-dependent — see that recipe for the measured cosine collapse."
+    }
+  ],
+  "board_verification": {
+    "date": "2026-07-26",
+    "board": "S100P (sw 4.0.5)",
+    "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; hrt_model_exec perf on the decode graph directly + chat() (3 repeated runs); restore the stopped container",
+    "decode_tok_s": 13.22
+  }
+}

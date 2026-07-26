@@ -42,12 +42,27 @@ native hbDNN runtime. The graph construction is private; the reproducible decisi
 - **Per-linear activation calibration** when flat ranges clip: 4B's deep linears
   reach |input|~200 and the flat ±32/64 ranges make it echo the prompt in a loop.
   Record max|input|×1.3 per linear from a real fp32 decode forward. 0.8B/2B do not
-  need this; 4B does. The trap is that a clipped model still compiles and runs —
-  it just degenerates.
+  need this; 4B does — and this scaling threshold is per-*decoder*, so a bigger
+  fine-tune at a new size needs its own check, not an assumption either way. The
+  trap is that a clipped model still compiles and runs — it just degenerates. The
+  qwen3.5-vlm recipe's vision tower hits the analogous failure independently
+  (massive activation in the deep MLP blocks specifically — see below, its
+  mechanism turned out **not** to be the RMSNorm one).
+- **4B decouples its GDN key and value head counts** (16 key / 32 value, vs the
+  smaller siblings' symmetric 16/16) — Q/K are broadcast up to the value head
+  count before the recurrence; the recurrence and its state tensor then run at
+  the value head count uniformly. A recipe ported from a symmetric sibling must
+  move the tensor-split boundaries and insert the broadcast step, not just widen
+  `hidden` — see the qwen3.5-4b recipe. Check every scaled-up sibling's config
+  for this instead of assuming symmetry carries.
 - **Keep in fp32**: SSM recurrence/state, depthwise conv, RMSNorms, the GDN
-  gated-norm. Variance-through-int16 is where a RMSNorm silently dies (a deep
-  massive-activation row rounds to 0 → `rsqrt(0+eps)`), the same failure the
-  vision tower hits — see the qwen3.5-vlm recipe.
+  gated-norm. Variance-through-int16 is a documented failure mode in adjacent
+  work (a deep massive-activation row rounds to 0 → `rsqrt(0+eps)`) — it was the
+  a priori suspicion for the Qwen3.5 vision tower too, and was checked and ruled
+  out there; the tower's actual failure is a different mechanism (massive
+  activation in the deep MLP linears' *inputs*, not the norm's variance) — see
+  the qwen3.5-vlm recipe. Keeping RMSNorm in fp32 here is a preventive measure
+  given the adjacent precedent, not evidence this model hit it.
 - **100% BPU**: gating ops (sigmoid/silu/softplus/exp) become int16 LUTs (`b30.lut`),
   and the attention softmax is hand-built (reduce_max→qexp→reduce_sum→div), so
   `remaining CPU native ops == {}`. Verify with `hrt_model_exec perf`
@@ -88,6 +103,15 @@ of "graph still intact" only.
 - **Host toolchain and board HBRT must match.** An `.hbm` compiled with a newer
   host HBDK can fail to load on an older board runtime; record both in
   `expected.json.toolchain`.
+- **`march` is not just a load-time check — it can change which hbcompile
+  optimisation level is safe.** A build that compiles fine on `nash-m` at the
+  default optimisation level can crash the compiler backend natively on
+  `nash-p` at the *same* default level, for a graph-shape-dependent reason
+  (`error: B30 VPU ops do not support circular buffer`, hit compiling the
+  qwen3.5-vlm 4B prefill graph specifically — see that recipe). `--probe`
+  (export+convert only) passing on both marches does not predict this; only a
+  full compile does. Lowering the optimisation level (`opt=0`) was the fix, at
+  the cost of a longer compile, no correctness difference.
 - **Performance mode is not sticky** on the board (`0x2b047000` drifts back) —
   re-write `0x99` and read it back before every benchmark, or you measure a
   throttled number.

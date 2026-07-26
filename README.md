@@ -44,18 +44,22 @@ licences.** A compiled `.hbm` is a derivative of upstream weights.
 | model | arch | origin | recipe | on-board (S100P) |
 |---|---|---|---|---|
 | **Qwen3.5-0.8B** | hybrid (Gated-DeltaNet SSM) | native (BLLM-only) | complete | 21.5 tok/s · 100% BPU int8 |
-| Qwen3.5-2B / 4B | hybrid | native | recipe | 14.6 / 6.9 tok/s |
+| **Qwen3.5-2B** | hybrid | native | complete | 13.22 tok/s (ctx4k) |
+| **Qwen3.5-4B** | hybrid, decoupled GDN heads | native | complete | 3.29 tok/s (ctx4k) |
 | **Phi-4-mini** | dense | native | complete | 8.7 tok/s · remap+phi format |
 | GLM-Edge | dense | native | planned | — |
 | Qwen2.5-1.5B / 7B | dense | oellm-official | recipe | 24.5 / 6.4 tok/s |
 | Qwen2.5-Omni-3B | omni (text+image+audio+video) | oellm-official | recipe | 14 tok/s |
-| Qwen3.5-VLM (320/448) | hybrid + vision | native | planned | TTFT 1.23 / 2.30 s |
+| **Qwen3.5-VLM (0.8B/2B/4B, 320/448px)** | hybrid + vision | native | complete (S100P); recipe (S600, load-verified) | TTFT 1.23 s (0.8B/320px) |
 
 - **origin** — `native` = self-converted (an architecture the official OE-LLM
   toolchain doesn't cover; the value of this repo). `oellm-official` = the
   official pre-compiled `.hbm` runs on BLLM's native runtime unchanged.
-- **recipe** — `complete` = the on-board three-part acceptance (below) passed.
-  `recipe` = the conversion is recorded but not re-run for this release.
+- **recipe status** — `complete` = the on-board three-part acceptance (below)
+  passed. `recipe` = the conversion is recorded but the full acceptance has not
+  been re-run for this release (e.g. compiled and load-verified on hardware, but
+  end-to-end `chat()` not yet re-run — see the specific model's `expected.json`
+  for exactly what is and is not verified). `planned` = not yet converted.
 
 Only models BLLM's native runtime **loads and has verified on the board** are
 listed. A model that merely compiles but was never run on-board is not a recipe —

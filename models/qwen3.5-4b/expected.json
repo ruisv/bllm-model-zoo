@@ -1,0 +1,66 @@
+{
+  "model": "qwen3.5-4b",
+  "upstream": "Qwen/Qwen3.5-4B",
+  "arch": "hybrid",
+  "note": "24 Gated-DeltaNet layers + 8 full-attention layers. UNLIKE qwen3.5-0.8b/2b, the GDN key and value head counts are DECOUPLED (16 key heads, 32 value heads) — Q/K are broadcast (repeat_interleave) up to the value head count before the recurrence; V is already at 32. State tensor is [32,128,128], not [16,128,128]. NOT an official OE-LLM architecture; BLLM-native only. The vision half of the checkpoint is dropped for the text package (see the qwen3.5-vlm recipe).",
+  "quantisation": {
+    "weights": "int8 per-channel",
+    "activations": "int16, PER-LINEAR CALIBRATED (not flat like 0.8b/2b)",
+    "kept_fp32": "SSM recurrence, depthwise conv, RMSNorms, GDN gated-norm",
+    "note": "Flat +-32/+-64 activation ranges clip this size's deep linears (measured max|input| ~198 on 'down', ~84 on q/k/v, ~65 on the GDN gates) into a degenerate loop. Calibration: max|input| * 1.3 margin from a real fp32 decode forward over a small prompt set, recorded per linear."
+  },
+  "variants": [
+    {
+      "name": "qwen3.5-4b-ctx4k-int8-s100",
+      "cache_len": 4096,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32; head-splitting adapted for the decoupled GDN heads, chunked-delta-rule math itself unchanged from qwen3.5-0.8b/2b (see README)",
+      "toolchain": {
+        "board_system": "4.0.5",
+        "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
+      },
+      "measured": {
+        "note": "S100P, 2026-07-26, performance mode set (0x2b047000/0x2b047004 = 0x99, re-written and read back this session). Measured two ways: (1) hrt_model_exec perf directly on the decode .hbm, 20 frames, single thread, dedicated core; (2) chat() through the image+text package (same decode sub-graph as the text-only package), 3 repeated runs, decode_tok_s identical to 2 decimal places across all 3 (3.29 each run). Board had another model's serving process stopped for the duration, restored afterward.",
+        "decode_tok_s": 3.29,
+        "all_bpu": true,
+        "cpu_inference_time_cost_ms": 0.0,
+        "bpu_graph_ms": 299.73,
+        "fused_segments": 1,
+        "effective_weight_bandwidth_GBps": 14.28,
+        "hbm_mb": 4280.9,
+        "ppl": {"dataset": "wikitext2", "value": null}
+      },
+      "task_metric": {
+        "name": "coherence-anchors",
+        "protocol": "EN factual, ZH factual",
+        "threshold": "all anchors pass",
+        "measured": "pass"
+      }
+    }
+  ],
+  "rejected_builds": [
+    {
+      "name": "flat int16 activation ranges (copied from 0.8b/2b)",
+      "why": "The flat +-32/+-64 ranges that fit 0.8b/2b clip this size's deep linears (real max|input| up to ~198 vs the +-64 range on 'down') into a degenerate loop. The build compiles and runs fluently — it just answers wrong. Fixed by per-linear calibration; see README."
+    },
+    {
+      "name": "symmetric GDN head split (copied from 0.8b/2b prefill recipe without adapting for decoupled heads)",
+      "why": "This model's checkpoint has linear_num_key_heads=16, linear_num_value_heads=32 (vs 16/16 on the smaller siblings). A prefill graph ported from a symmetric sibling without inserting the Q/K broadcast-to-value-head-count step, and without moving the tensor split boundaries to be key-head-width for Q/K and value-head-width for V, does not match the checkpoint's actual weight shapes."
+    },
+    {
+      "name": "block_quantized_matmul (dynamic-quant decode)",
+      "why": "Same failure as qwen3.5-0.8b: the dynamic per-token quant path is a PREFILL op, ~130x slower per matmul in decode."
+    },
+    {
+      "name": "all-BPU chunked prefill (Newton triangular inverse)",
+      "why": "Same numerical failure as qwen3.5-0.8b — not re-derived at this size, the mechanism is head-count independent."
+    }
+  ],
+  "board_verification": {
+    "date": "2026-07-26",
+    "board": "S100P (sw 4.0.5)",
+    "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; hrt_model_exec perf on the decode graph directly + chat() (3 repeated runs); restore the stopped container",
+    "decode_tok_s": 3.29
+  }
+}

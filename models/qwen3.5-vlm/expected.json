@@ -1,0 +1,161 @@
+{
+  "model": "qwen3.5-vlm",
+  "upstream": "Qwen/Qwen3.5-0.8B, Qwen/Qwen3.5-2B, Qwen/Qwen3.5-4B",
+  "arch": "hybrid + vision",
+  "note": "Qwen3.5 is natively image-text-to-text; this recipe is the vision tower (patch16, 2x2 merge, interleaved 3-D mrope) + chunked-prefill graph, paired with each sibling recipe's text decoder unchanged. Vision tower depth/width differs by decoder size (0.8B/2B share a 12-block tower; 4B's is 24 blocks — see qwen3.5-4b recipe). NOT an official OE-LLM Omni-style package: Qwen3.5's tower geometry (patch16, mean/std 0.5, mrope_section [11,11,10] interleaved) is different from Omni's (patch14, CLIP constants, mrope_section [16,24,24] contiguous) and must not be copied across.",
+  "quantisation": {
+    "vision_weights": "int8 per-channel",
+    "vision_activations": "int16, per-linear calibrated on 48 COCO val2017 images",
+    "note": "Massive-activation channels in the tower's deep MLP blocks (not RMSNorm/variance) clip under a flat calibration range. Recalibrate per bucket AND per decoder size independently — see README. Gate acceptance on real photos only; a synthetic reference image reads a misleadingly low cosine relative to the real-photo case."
+  },
+  "variants": [
+    {
+      "name": "qwen3.5-0.8b-vlm320-ctx2k-int8-s100",
+      "decoder": "qwen3.5-0.8b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 2048,
+      "board": "S100P",
+      "measured": {
+        "ttft_s": 1.23,
+        "tower_cosine_vs_fp32": 0.9987,
+        "note": "TTFT originally measured during initial development. Re-measured 2026-07-26 (performance mode re-set, 3 repeated runs, decode_tok_s 21.37-21.38 across all 3): ttft_s came back 1.30-1.31s, ~6% higher than the original 1.23s. Not chased further — could be board-condition variance (thermal, background load) rather than a regression; recorded here rather than silently overwritten, since a discrepancy this repo did not explain is exactly the kind of thing that should stay visible. Answer and correctness unaffected (with/without-image contrast still passes)."
+      }
+    },
+    {
+      "name": "qwen3.5-0.8b-vlm448-ctx2k-int8-s100",
+      "decoder": "qwen3.5-0.8b",
+      "bucket_px": 448,
+      "vision_tokens": 196,
+      "cache_len": 2048,
+      "board": "S100P",
+      "measured": {
+        "ttft_s": 2.30,
+        "tower_cosine_vs_fp32": 0.9965
+      }
+    },
+    {
+      "name": "qwen3.5-2b-vlm320-ctx4k-int8-s100",
+      "decoder": "qwen3.5-2b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 4096,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-26, performance mode set. Loaded in isolation (no other model resident; a different model's serving process was stopped for the duration and restored afterward). 3 repeated chat() runs: ttft_s 1.649-1.660s, decode_tok_s 13.21-13.22 (stable to 2 decimals). Contrast experiment (temp=0, same question): without an image the model answered a plain guess; with the image it answered specifically and correctly about the image's actual content — repeated across both the initial and re-measurement passes.",
+        "load_s": 9.6,
+        "ttft_s": 1.65,
+        "decode_tok_s": 13.22,
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast",
+        "protocol": "same free-form question, temp=0, once with the test image attached and once without",
+        "threshold": "answers differ, and the with-image answer is factually correct about the image",
+        "measured": "pass"
+      }
+    },
+    {
+      "name": "qwen3.5-4b-vlm320-ctx4k-int8-s100",
+      "decoder": "qwen3.5-4b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 4096,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-26, performance mode set. Same isolation protocol and contrast experiment as the 2B variant. 3 repeated chat() runs: ttft_s 3.44-3.45s, decode_tok_s 3.29 identical across all 3.",
+        "load_s": 13.96,
+        "ttft_s": 3.45,
+        "decode_tok_s": 3.29,
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast",
+        "protocol": "same free-form question, temp=0, once with the test image attached and once without",
+        "threshold": "answers differ, and the with-image answer is factually correct about the image",
+        "measured": "pass"
+      }
+    },
+    {
+      "name": "qwen3.5-2b-vlm320-ctx4k-int8-s600",
+      "decoder": "qwen3.5-2b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 4096,
+      "board": "S600 (nash-p)",
+      "prefill_compile": "default hbcompile optimisation level; no issue at this size (see qwen3.5-vlm S600 note — the crash is 4B-specific)",
+      "measured": {
+        "note": "2026-07-26, hrt_model_exec perf directly on the decoder .hbm (30 frames, single thread, --core_id 1,2,3,4 to match the 4-core compile). The number below is real hardware, but it is the decoder alone -- no vision tower or chunked-prefill graph in the loop. Full end-to-end chat() with an image is intentionally NOT recorded here: with the hobot-dnn-s600 conda dependency fixed and a NativeVlm multi-core crash also fixed (both since resolved -- see qwen3.5-vlm README S600 section), end-to-end chat() runs but is intermittently wrong: ~40-50% of calls (temp=0, fresh process/load each time) return empty output instead of the correct with-image answer. Root cause not isolated; do not treat this package's chat() as reliable yet.",
+        "loads_on_hardware": true,
+        "decoder_only_decode_tok_s": 29.56,
+        "decoder_only_bpu_graph_ms": 33.35,
+        "decoder_only_all_bpu": true,
+        "decoder_only_effective_weight_bandwidth_GBps": 57.64,
+        "chat_crash_fixed": true,
+        "chat_reliable": false,
+        "chat_known_issue": "intermittent empty output, ~40-50% of calls, root cause unknown",
+        "ttft_s": null,
+        "decode_tok_s": null
+      }
+    },
+    {
+      "name": "qwen3.5-4b-vlm320-ctx4k-int8-s600",
+      "decoder": "qwen3.5-4b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 4096,
+      "board": "S600 (nash-p)",
+      "prefill_compile": "REQUIRES hbcompile opt=0 — default optimisation level crashes natively, see rejected_builds",
+      "measured": {
+        "note": "2026-07-26, hrt_model_exec perf directly on the decoder .hbm (20 frames, single thread, --core_id 1,2,3,4). Decoder-only number, no vision tower or prefill graph in the loop. Full end-to-end chat() with an image NOT tested at 4B at all (the hobot-dnn-s600 dependency that previously blocked this has since been fixed, but testing effort went to the 2B variant, which surfaced an unresolved intermittent chat() failure -- see qwen3.5-vlm README S600 section. Assume the same risk applies here until 4B is actually tested.",
+        "loads_on_hardware": true,
+        "decoder_only_decode_tok_s": 10.17,
+        "decoder_only_bpu_graph_ms": 97.27,
+        "decoder_only_all_bpu": true,
+        "decoder_only_effective_weight_bandwidth_GBps": 44.01,
+        "chat_tested": false,
+        "ttft_s": null,
+        "decode_tok_s": null
+      }
+    }
+  ],
+  "rejected_builds": [
+    {
+      "name": "Omni vision settings copied onto a Qwen3.5 tower",
+      "why": "patch14 vs Qwen3.5's patch16, CLIP mean/std vs Qwen3.5's flat 0.5/0.5, mrope_section [16,24,24] contiguous vs Qwen3.5's [11,11,10] interleaved. All four compile and load without error; a mismatch produces shape-correct garbage discovered only once an image is fed, not at compile or text-smoke-test time."
+    },
+    {
+      "name": "336px bucket",
+      "why": "patch16 x merge2 requires side % 32 == 0; 336/16=21 is odd, no clean 2x2 merge. Reject before compile, not after."
+    },
+    {
+      "name": "flat/synthetic vision-tower calibration",
+      "why": "A flat calibration range across all tower blocks clips the deep-MLP massive-activation channels (2-4x larger than earlier blocks). A synthetic/rendered reference image under-represents the real-photo activation distribution, so a build can measure a misleadingly low cosine on a synthetic gate image (~0.987) while actually being fine on real photos (~0.997) -- OR the reverse could happen with a different synthetic image, which is exactly why synthetic gating is rejected as a methodology, not just this one instance of it."
+    },
+    {
+      "name": "S600 (nash-p) 4B prefill graph at default hbcompile optimisation",
+      "why": "Native compiler crash (not a catchable exception): 'error: B30 VPU ops do not support circular buffer'. Specific to {nash-p backend, this graph shape at 4B scale, default opt level} -- the identical graph compiles fine for nash-p at 2B scale, and for 4B on nash-m (S100P) at the default level. --probe (export+convert only) passes clean both before and after the fix, confirming the graph structure itself was never the problem. Fixed by compiling at hbcompile opt=0 (~46 min, same correctness as the working nash-m build)."
+    }
+  ],
+  "board_verification": {
+    "s100p": {
+      "date": "2026-07-26",
+      "board": "S100P (sw 4.0.5)",
+      "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; chat() with a test image, contrast against the same question without the image; restore the stopped container",
+      "sizes_verified": ["0.8b", "2b", "4b"]
+    },
+    "s600": {
+      "date": "2026-07-26",
+      "board": "S600 sandbox (nash-p)",
+      "flow": "hrt_model_exec model_info on the compiled vision tower and prefill graph directly for load-only verification; full bllm.load() + chat(images=[...]) attempted for 2b once the hobot-dnn-s600 dependency and a NativeVlm multi-core crash were both fixed",
+      "sizes_verified_load_only": ["2b", "4b"],
+      "sizes_verified_end_to_end": [],
+      "sizes_attempted_end_to_end_but_unreliable": ["2b"],
+      "note": "2b end-to-end chat() runs (crash fixed) but is intermittently wrong (~40-50% empty output, root cause unknown) -- NOT counted as verified. 4b end-to-end not attempted at all. See qwen3.5-vlm README S600 section."
+    }
+  }
+}

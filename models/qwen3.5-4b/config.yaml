@@ -1,0 +1,49 @@
+# Compile knobs for Qwen3.5-4B (hybrid Gated-DeltaNet SSM), BLLM native runtime.
+# These are the parameters that define a build; the graph construction itself is
+# the native toolchain (not published — see repo README). Feed this to the native
+# compile driver, then common/make_dir.py to emit the bllm.load()-ready directory.
+#
+# UNLIKE qwen3.5-0.8b/2b: this size DECOUPLES the GDN key and value head counts
+# (16 key heads, 32 value heads) instead of the smaller siblings' symmetric 16/16.
+# See README "The decoupled GDN heads" for what that changes in the graph and why
+# a recipe cannot just copy the 0.8b/2b constants and scale hidden size.
+
+model:
+  upstream: "Qwen/Qwen3.5-4B"
+  arch: hybrid                 # 24 Gated-DeltaNet layers + 8 full-attention
+  hidden: 2560
+  intermediate: 9216
+  layers: 32
+  gdn:
+    head_dim: 128
+    key_heads: 16               # DECOUPLED from value_heads — see README
+    value_heads: 32              # Q/K are broadcast (repeat_interleave) up to this count before the recurrence
+    conv_kernel: 4
+  attn: {q_heads: 16, kv_heads: 4, head_dim: 256, rope_theta: 1.0e7, rotary_dim: 64}
+  drop: [vision, mtp]          # text package; the VLM recipe keeps vision
+
+quantise:
+  weights: int8                # per-channel, const_fake_quant, static leap.linear path
+  activations: int16
+  activation_ranges: per-linear-calibrated   # NOT flat like 0.8b/2b — see README
+  calibration:
+    method: "max|input| * 1.3 margin, from a real fp32 decode forward"
+    dataset: "small fixed calibration prompt set"
+    note: "0.8b/2b's deep-linear |input| stays under the flat +-32/+-64 ranges; 4B's reaches ~200 and a flat range clips it into a degenerate loop. Trap: a clipped build still compiles and runs fluently — it just answers wrong."
+  keep_fp32: [ssm_state, conv, rmsnorm, gdn_gated_norm]
+  gating_lut: int16            # sigmoid/silu/softplus/exp -> b30.lut so 100% BPU
+
+compile:
+  march: nash-m                # nash-m = S100/S100P; nash-p = S600 (see qwen3.5-vlm recipe for an nash-p prefill trap at THIS size)
+  cache_len: 4096
+  bpu_cores: 1                 # S600 binds 4 cores at this size — see qwen3.5-vlm recipe
+  prefill:
+    kind: chunked-float
+    N: 32
+    C: 16
+
+emit:
+  tool: bllm-make-model-dir
+  arch: hybrid
+  needs: [hbm, embed_tokens.bin, tokenizer.json]
+  name: "Qwen3.5-4B · ctx4k · int8 · RDK S100/S100P (100% BPU)"
