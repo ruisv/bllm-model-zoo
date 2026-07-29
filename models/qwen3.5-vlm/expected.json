@@ -43,10 +43,12 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "ttft_s/decode_tok_s below are carried over from the pre-GQA-rewrite baseline (2026-07-26) — not yet re-measured against the current build (see qwen3.5-2b/expected.json for the rewrite itself and its 2026-07-29 formal re-verification: prefill/decode parity PASS, ppl 51.2327). Contrast experiment (temp=0, same question, real photo of two brown bears) re-run 2026-07-29 against the current build: without an image the model correctly declined ('no image provided'); with the image it correctly and specifically described the bears.",
-        "load_s": 9.6,
+        "note": "Re-measured S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0) — decode_tok_s essentially unchanged from the pre-rewrite baseline (13.20 vs 13.22), consistent with the board output being bit-identical to that baseline. See qwen3.5-2b/expected.json for the rewrite itself and its formal re-verification: prefill/decode parity PASS, ppl 51.2327. Contrast experiment (temp=0, same question, real photo) also re-run: without an image the model correctly declined ('no image provided'); with the image it correctly and specifically described the scene.",
+        "load_s": 8.12,
         "ttft_s": 1.65,
-        "decode_tok_s": 13.22,
+        "ttft_ms_runs": [1649.9, 1653.0, 1646.2],
+        "decode_tok_s": 13.20,
+        "decode_tok_s_runs": [13.19, 13.20, 13.21],
         "answer_with_image_correct": true,
         "answer_changes_with_vs_without_image": true
       },
@@ -66,7 +68,12 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-29. New this release — a shorter KV window for short-context / faster-decode use. Not yet independently timed (ttft_s/decode_tok_s); see qwen3.5-2b/expected.json for ppl (50.8687).",
+        "note": "S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). A shorter KV window for short-context / faster-decode use — decode_tok_s is faster than ctx4k (15.29 vs 13.20) as expected. See qwen3.5-2b/expected.json for ppl (50.8687).",
+        "load_s": 8.26,
+        "ttft_s": 1.51,
+        "ttft_ms_runs": [1508.2, 1505.3, 1514.5],
+        "decode_tok_s": 15.29,
+        "decode_tok_s_runs": [15.28, 15.29, 15.30],
         "answer_with_image_correct": true,
         "answer_changes_with_vs_without_image": true
       },
@@ -86,10 +93,12 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "ttft_s/decode_tok_s below are carried over from the pre-rewrite baseline (2026-07-26). This release rewrites 4B's attention from expand_win to GQA batched matmul + mask dedup, which — UNLIKE 0.8b/2b — introduces new int16 quantisation on the attention matmul that the old expand_win path never had; board output is not byte-identical to the pre-rewrite baseline (still coherent/correct). Full caveat and the offline exactness check for the batched-matmul math itself are in qwen3.5-4b/expected.json. This card's 2026-07-29 contrast re-run against the CURRENT build: without an image the model correctly declined; with the image it correctly identified two brown bears (grizzly subspecies).",
-        "load_s": 13.96,
-        "ttft_s": 3.45,
-        "decode_tok_s": 3.29,
+        "note": "Re-measured S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). decode_tok_s is 6.14, nearly 2x the pre-rewrite baseline's 3.29 — see qwen3.5-4b/expected.json for the mechanism (GQA batched matmul drops most of expand_win's redundant DMA) and the quantisation caveat (this rewrite is NOT byte-identical to the pre-rewrite baseline on 4B, unlike 0.8b/2b — the formal acceptance run is what actually clears it, not the offline math check alone). Contrast re-run against the CURRENT build: without an image the model correctly declined; with the image it correctly identified two brown bears (grizzly subspecies).",
+        "load_s": 15.02,
+        "ttft_s": 3.29,
+        "ttft_ms_runs": [3287.1, 3289.2, 3285.1],
+        "decode_tok_s": 6.14,
+        "decode_tok_s_runs": [6.13, 6.14, 6.14],
         "answer_with_image_correct": true,
         "answer_changes_with_vs_without_image": true
       },
@@ -109,7 +118,12 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-29. New this release. Not yet independently timed (ttft_s/decode_tok_s); see qwen3.5-4b/expected.json for ppl (35.0939).",
+        "note": "S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). See qwen3.5-4b/expected.json for ppl (35.0939).",
+        "load_s": 14.59,
+        "ttft_s": 2.93,
+        "ttft_ms_runs": [2933.8, 2929.5, 2941.2],
+        "decode_tok_s": 7.54,
+        "decode_tok_s_runs": [7.54, 7.54, 7.54],
         "answer_with_image_correct": true,
         "answer_changes_with_vs_without_image": true
       },

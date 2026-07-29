@@ -16,7 +16,14 @@ built from this same decoder is the [qwen3.5-vlm](../qwen3.5-vlm/) recipe.
 
 | variant | cache_len | on-board (S100P) |
 |---|---|---|
-| `qwen3.5-4b-ctx4k-int8-s100` | 4096 | 3.3 tok/s |
+| `qwen3.5-4b-ctx4k-int8-s100` | 4096 | 6.14 tok/s |
+| `qwen3.5-4b-ctx512-int8-s100` | 512 | 7.54 tok/s |
+
+Measured 2026-07-29 against this release's GQA batched-matmul + mask-dedup
+attention rewrite — nearly 2x the pre-rewrite baseline (3.3 tok/s). Unlike
+0.8b/2b, this rewrite is not a pure no-op on 4B (it adds int16 quantisation the
+old `expand_win` path never had); see `expected.json` for the full caveat and
+why the formal acceptance run, not just the speed number, is what clears it.
 
 ## The decoupled GDN heads
 

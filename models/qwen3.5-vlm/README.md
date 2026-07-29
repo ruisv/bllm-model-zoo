@@ -19,10 +19,19 @@ decoder itself is unchanged by adding vision.
 |---|---|---|---|---|---|---|
 | `qwen3.5-0.8b-vlm320-ctx2k-int8-s100` | 0.8B | 320px (100 tok) | 2048 | S100P | 1.23 s | — |
 | `qwen3.5-0.8b-vlm448-ctx2k-int8-s100` | 0.8B | 448px (196 tok) | 2048 | S100P | 2.30 s | — |
-| `qwen3.5-2b-vlm320-ctx4k-int8-s100` | 2B | 320px (100 tok) | 4096 | S100P | 1.65 s | 13.22 tok/s |
-| `qwen3.5-4b-vlm320-ctx4k-int8-s100` | 4B | 320px (100 tok) | 4096 | S100P | 3.45 s | 3.29 tok/s |
+| `qwen3.5-2b-vlm320-ctx4k-int8-s100` | 2B | 320px (100 tok) | 4096 | S100P | 1.65 s | 13.20 tok/s |
+| `qwen3.5-2b-vlm320-ctx512-int8-s100` | 2B | 320px (100 tok) | 512 | S100P | 1.51 s | 15.29 tok/s |
+| `qwen3.5-4b-vlm320-ctx4k-int8-s100` | 4B | 320px (100 tok) | 4096 | S100P | 3.29 s | 6.14 tok/s |
+| `qwen3.5-4b-vlm320-ctx512-int8-s100` | 4B | 320px (100 tok) | 512 | S100P | 2.93 s | 7.54 tok/s |
 | `qwen3.5-2b-vlm320-ctx4k-int8-s600` | 2B | 320px (100 tok) | 4096 | S600 (`nash-p`) | — (see S600 section) | — |
 | `qwen3.5-4b-vlm320-ctx4k-int8-s600` | 4B | 320px (100 tok) | 4096 | S600 (`nash-p`) | — (see S600 section) | — |
+
+**2B/4B decode is measured against this release's GQA batched-matmul + mask-dedup
+rewrite** (2026-07-29) — 4B is nearly 2x faster than the pre-rewrite baseline
+(3.29 tok/s), the GQA path drops most of `expand_win`'s redundant DMA. 2B is
+essentially unchanged (13.22 → 13.20), consistent with its board output being
+verified bit-identical to the pre-rewrite build. See `../qwen3.5-2b/expected.json`
+and `../qwen3.5-4b/expected.json` for the run-by-run numbers.
 
 **320px is the recommended default bucket** across all three sizes — see
 "Choosing a bucket" below. 224/448 are also legal; 336 is not (see

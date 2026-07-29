@@ -21,8 +21,12 @@
         "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
       },
       "measured": {
-        "note": "decode_tok_s/bpu_graph_ms/effective_weight_bandwidth_GBps below are carried over from the pre-GQA-rewrite baseline (S100P, 2026-07-26) — NOT yet re-measured against the current GQA+mask-dedup build. Board output was verified bit-identical to the prior baseline on the standard chat smoke test, so a throughput regression is not expected, but the number itself is stale and should be re-measured before being cited as current.",
-        "decode_tok_s": 13.22,
+        "note": "Re-measured S100P, 2026-07-29, performance mode set, against the current GQA+mask-dedup build (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). decode_tok_s essentially unchanged from the pre-rewrite baseline (13.20 vs 13.22) — consistent with the board output being verified bit-identical to that baseline. bpu_graph_ms/effective_weight_bandwidth_GBps are NOT independently re-measured this pass (no hrt_model_exec run) — left at their pre-rewrite values since decode_tok_s confirms no change.",
+        "decode_tok_s": 13.20,
+        "decode_tok_s_runs": [13.19, 13.20, 13.21],
+        "ttft_ms": 1649.7,
+        "ttft_ms_runs": [1649.9, 1653.0, 1646.2],
+        "load_s": 8.12,
         "all_bpu": true,
         "cpu_inference_time_cost_ms": 0.0,
         "bpu_graph_ms": 73.43,
@@ -47,7 +51,12 @@
       "prefill": "chunked-float-N32, same GQA batched-matmul + mask-dedup rewrite as the ctx4k variant above",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-29.",
+        "note": "S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0).",
+        "decode_tok_s": 15.29,
+        "decode_tok_s_runs": [15.28, 15.29, 15.30],
+        "ttft_ms": 1509.3,
+        "ttft_ms_runs": [1508.2, 1505.3, 1514.5],
+        "load_s": 8.26,
         "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 50.8687}
       },
       "task_metric": {
@@ -71,7 +80,7 @@
   "board_verification": {
     "date": "2026-07-29",
     "board": "S100P (sw 4.0.5)",
-    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; restore the stopped processes",
-    "decode_tok_s": 13.22
+    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; benchmark decode_tok_s/ttft_ms via common/bench_vlm.py; restore the stopped processes",
+    "decode_tok_s": 13.20
   }
 }

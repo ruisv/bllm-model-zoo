@@ -44,8 +44,8 @@ licences.** A compiled `.hbm` is a derivative of upstream weights.
 | model | arch | origin | recipe | on-board (S100P) |
 |---|---|---|---|---|
 | **Qwen3.5-0.8B** | hybrid (Gated-DeltaNet SSM) | native (BLLM-only) | complete | 21.5 tok/s · 100% BPU int8 |
-| **Qwen3.5-2B** | hybrid | native | complete | 13.22 tok/s (ctx4k) |
-| **Qwen3.5-4B** | hybrid, decoupled GDN heads | native | complete | 3.29 tok/s (ctx4k) |
+| **Qwen3.5-2B** | hybrid | native | complete | 13.20 tok/s (ctx4k) · 15.29 tok/s (ctx512) |
+| **Qwen3.5-4B** | hybrid, decoupled GDN heads | native | complete | 6.14 tok/s (ctx4k) · 7.54 tok/s (ctx512) |
 | **Phi-4-mini** | dense | native | complete | 8.7 tok/s · remap+phi format |
 | GLM-Edge | dense | native | planned | — |
 | Qwen2.5-1.5B / 7B | dense | oellm-official | recipe | 24.5 / 6.4 tok/s |

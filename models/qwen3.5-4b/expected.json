@@ -21,13 +21,19 @@
         "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
       },
       "measured": {
-        "note": "decode_tok_s/bpu_graph_ms/effective_weight_bandwidth_GBps below are carried over from the PRE-rewrite baseline (S100P, 2026-07-26) — not yet re-measured against the current GQA+mask-dedup build; a throughput regression is not expected (same op count, less DMA) but the number is stale.\n\nCAVEAT (unlike 0.8b/2b, where the GQA rewrite reproduces the prior build's output bit-for-bit): 4B's original expand_win attention had NO int16 quantisation on the attention score/output matmul; the ported GQA path wraps that matmul in int16 like 0.8b/2b already did, since it reuses their code path. Board output after the rewrite is NOT byte-identical to the pre-rewrite baseline (e.g. one prior answer mentioned 'one adult and one cub', the new build's phrasing omits that detail) — verified this is a real, expected precision perturbation from the newly-added quantisation, not a bug: the batched-matmul math itself was checked algebraically exact against the old expand_win math offline (numpy, exact 4B head config NHa=16/NKV=4/HDa=256/REP=4/CL=4096, cosine 1.0000001, max abs diff 2.38e-7). This release's formal acceptance run (parity/ppl/image-contrast/anchors, all below) is what actually clears this build for use, not the offline math check alone — a build can be algebraically exact and still misbehave downstream, so the two aren't a substitute for each other.",
-        "decode_tok_s": 3.29,
+        "note": "Re-measured S100P, 2026-07-29, performance mode set, against the current GQA+mask-dedup build (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). decode_tok_s is 6.14, nearly 2x the pre-rewrite baseline's 3.29 — the GQA batched matmul drops most of the expand_win broadcast's redundant DMA. bpu_graph_ms and effective_weight_bandwidth_GBps below are DERIVED (scaled from the pre-rewrite values by the decode_tok_s ratio, 6.14/3.29 = 1.87x) — NOT independently re-measured via hrt_model_exec this pass; treat as an estimate, not a hardware profile.\n\nCAVEAT (unlike 0.8b/2b, where the GQA rewrite reproduces the prior build's output bit-for-bit): 4B's original expand_win attention had NO int16 quantisation on the attention score/output matmul; the ported GQA path wraps that matmul in int16 like 0.8b/2b already did, since it reuses their code path. Board output after the rewrite is NOT byte-identical to the pre-rewrite baseline (e.g. one prior answer mentioned 'one adult and one cub', the new build's phrasing omits that detail) — verified this is a real, expected precision perturbation from the newly-added quantisation, not a bug: the batched-matmul math itself was checked algebraically exact against the old expand_win math offline (numpy, exact 4B head config NHa=16/NKV=4/HDa=256/REP=4/CL=4096, cosine 1.0000001, max abs diff 2.38e-7). This release's formal acceptance run (parity/ppl/image-contrast/anchors, all below) is what actually clears this build for use, not the offline math check alone — a build can be algebraically exact and still misbehave downstream, so the two aren't a substitute for each other.",
+        "decode_tok_s": 6.14,
+        "decode_tok_s_runs": [6.13, 6.14, 6.14],
+        "ttft_ms": 3287.1,
+        "ttft_ms_runs": [3287.1, 3289.2, 3285.1],
+        "load_s": 15.02,
         "all_bpu": true,
         "cpu_inference_time_cost_ms": 0.0,
-        "bpu_graph_ms": 299.73,
+        "bpu_graph_ms": 160.6,
+        "bpu_graph_ms_derivation": "derived: 299.73 / (6.14/3.29), not independently measured",
         "fused_segments": 1,
-        "effective_weight_bandwidth_GBps": 14.28,
+        "effective_weight_bandwidth_GBps": 26.65,
+        "effective_weight_bandwidth_GBps_derivation": "derived: 14.28 * (6.14/3.29), not independently measured",
         "hbm_mb": 4280.9,
         "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 35.2907,
                 "measured": "S100P, 2026-07-29, common/eval_ppl.py against the GQA+mask-dedup build"}
@@ -47,7 +53,12 @@
       "prefill": "chunked-float-N32, same GQA batched-matmul + mask-dedup rewrite and the same quantisation caveat as the ctx4k variant above",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-29.",
+        "note": "S100P, 2026-07-29, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0).",
+        "decode_tok_s": 7.54,
+        "decode_tok_s_runs": [7.54, 7.54, 7.54],
+        "ttft_ms": 2934.8,
+        "ttft_ms_runs": [2933.8, 2929.5, 2941.2],
+        "load_s": 14.59,
         "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 35.0939}
       },
       "task_metric": {
@@ -79,7 +90,7 @@
   "board_verification": {
     "date": "2026-07-29",
     "board": "S100P (sw 4.0.5)",
-    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; restore the stopped processes",
-    "decode_tok_s": 3.29
+    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; benchmark decode_tok_s/ttft_ms via common/bench_vlm.py; restore the stopped processes",
+    "decode_tok_s": 6.14
   }
 }

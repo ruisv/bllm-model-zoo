@@ -16,7 +16,12 @@ which packages this exact decoder `.hbm` alongside a vision tower.
 
 | variant | cache_len | on-board (S100P) |
 |---|---|---|
-| `qwen3.5-2b-ctx4k-int8-s100` | 4096 | 13.22 tok/s |
+| `qwen3.5-2b-ctx4k-int8-s100` | 4096 | 13.20 tok/s |
+| `qwen3.5-2b-ctx512-int8-s100` | 512 | 15.29 tok/s |
+
+Measured 2026-07-29 against this release's GQA batched-matmul + mask-dedup
+attention rewrite — essentially unchanged from the pre-rewrite baseline (13.22
+tok/s), consistent with board output verified bit-identical to that baseline.
 
 ## What goes wrong
 
