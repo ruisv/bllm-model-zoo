@@ -19,6 +19,8 @@ decoder itself is unchanged by adding vision.
 |---|---|---|---|---|---|---|
 | `qwen3.5-0.8b-vlm320-ctx2k-int8-s100` | 0.8B | 320px (100 tok) | 2048 | S100P | 1.23 s | — |
 | `qwen3.5-0.8b-vlm448-ctx2k-int8-s100` | 0.8B | 448px (196 tok) | 2048 | S100P | 2.30 s | — |
+| `qwen3.5-0.8b-vlm320-ctx4k-int8-s100` | 0.8B | 320px (100 tok) | 4096 | S100P | 1.32 s | 18.52 tok/s |
+| `qwen3.5-0.8b-vlm320-ctx512-int8-s100` | 0.8B | 320px (100 tok) | 512 | S100P | 1.19 s | 23.18 tok/s |
 | `qwen3.5-2b-vlm320-ctx4k-int8-s100` | 2B | 320px (100 tok) | 4096 | S100P | 1.65 s | 13.20 tok/s |
 | `qwen3.5-2b-vlm320-ctx512-int8-s100` | 2B | 320px (100 tok) | 512 | S100P | 1.51 s | 15.29 tok/s |
 | `qwen3.5-4b-vlm320-ctx4k-int8-s100` | 4B | 320px (100 tok) | 4096 | S100P | 3.29 s | 6.14 tok/s |
@@ -32,6 +34,18 @@ rewrite** (2026-07-29) — 4B is nearly 2x faster than the pre-rewrite baseline
 essentially unchanged (13.22 → 13.20), consistent with its board output being
 verified bit-identical to the pre-rewrite build. See `../qwen3.5-2b/expected.json`
 and `../qwen3.5-4b/expected.json` for the run-by-run numbers.
+
+**0.8B's ctx4k/ctx512 prefill was broken for most of this release** — not from
+any change made this cycle, but because `qwen35_prefill_compile.py` (the script
+that was wired up for 0.8B) turned out to be a different, all-BPU int8
+block-recursive-inverse implementation than the float/Newton-doubling one 2B/4B
+actually use, and this repo's own `rejected_builds` already documented that path
+as impractically slow to compile. Real compile attempts on it ran 15-19h+ and
+grew past 80GB RSS on the convert host before being killed, twice. The correct
+script (`qwen35_prefill_float.py`) was present on the convert host the whole
+time and mirrors 2B/4B exactly — once that was the one actually invoked, it
+compiled clean in ~38 minutes. See `expected.json.rejected_builds` for the full
+note.
 
 **320px is the recommended default bucket** across all three sizes — see
 "Choosing a bucket" below. 224/448 are also legal; 336 is not (see

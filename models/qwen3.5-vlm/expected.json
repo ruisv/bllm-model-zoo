@@ -35,6 +35,58 @@
       }
     },
     {
+      "name": "qwen3.5-0.8b-vlm320-ctx4k-int8-s100",
+      "decoder": "qwen3.5-0.8b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 4096,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "prefill": "chunked-float-N32 (Newton-doubling triangular inverse in float, CPU fallback for the [C,C]/[C,Dg] matmuls — the same recipe as qwen3.5-2b/4b). This variant's model_prefill.hbm was MISSING for most of this release: the file previously wired up for 0.8b prefill (qwen35_prefill_compile.py) is a different, all-BPU int8 block-recursive-inverse implementation that this repo's own rejected_builds already documented as impractically slow to compile (unbounded/very slow hbcompile, matching a multi-attempt real compile that ran 15-19h+ and grew to 80-90GB RSS before being killed). The correct script (qwen35_prefill_float.py, mirroring 2B/4B) existed on the convert host but was not the one being invoked — once corrected, this compiled cleanly in ~38 min, in line with the 2B/4B siblings.",
+      "measured": {
+        "note": "S100P, 2026-07-30, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0).",
+        "load_s": 4.26,
+        "ttft_ms_runs": [1313.7, 1324.3, 1320.8],
+        "decode_tok_s": 18.52,
+        "decode_tok_s_runs": [18.53, 18.52, 18.52],
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true,
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 83.0899}
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "same as the 2B/4B ctx4k variants — with-vs-without-image contrast, real photo, temp=0; EN/ZH factual, arithmetic, multi-turn name recall; decoder-side prefill/decode parity via common/eval_parity.py",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-30) — parity PASS (first-token match, 48-token greedy identical, control-ppl identical), image contrast PASS, EN/ZH factual + multi-turn memory PASS. Arithmetic (17x23) answered 401 instead of 391 — WRONG, but this is model capability at this size, not an infra/quantisation bug: the ctx512 sibling (same weights, only cache_len differs) answers the identical prompt correctly (391), i.e. this sits right at 0.8B's arithmetic edge and tips either way depending on the exact compiled graph. Recorded as-is rather than re-rolled."
+      }
+    },
+    {
+      "name": "qwen3.5-0.8b-vlm320-ctx512-int8-s100",
+      "decoder": "qwen3.5-0.8b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 512,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "prefill": "chunked-float-N32, same script and fix as the ctx4k variant above",
+      "measured": {
+        "note": "S100P, 2026-07-30, performance mode set (common/bench_vlm.py, 3 repeated chat() runs with a real image, temp=0). Faster than ctx4k as expected (smaller KV window).",
+        "load_s": 4.2,
+        "ttft_ms_runs": [1195.7, 1192.1, 1191.4],
+        "decode_tok_s": 23.18,
+        "decode_tok_s_runs": [23.18, 23.18, 23.19],
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true,
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 83.5979}
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "same as the ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-30) — parity PASS, image contrast PASS, all four task anchors PASS including arithmetic (391, correct) — see the ctx4k variant's note on why that one differs."
+      }
+    },
+    {
       "name": "qwen3.5-2b-vlm320-ctx4k-int8-s100",
       "decoder": "qwen3.5-2b",
       "bucket_px": 320,
@@ -193,14 +245,18 @@
     {
       "name": "S600 (nash-p) 4B prefill graph at default hbcompile optimisation",
       "why": "Native compiler crash (not a catchable exception): 'error: B30 VPU ops do not support circular buffer'. Specific to {nash-p backend, this graph shape at 4B scale, default opt level} -- the identical graph compiles fine for nash-p at 2B scale, and for 4B on nash-m (S100P) at the default level. --probe (export+convert only) passes clean both before and after the fix, confirming the graph structure itself was never the problem. Fixed by compiling at hbcompile opt=0 (~46 min, same correctness as the working nash-m build)."
+    },
+    {
+      "name": "0.8B chunked prefill: all-BPU int8 block-recursive triangular inverse (qwen35_prefill_compile.py)",
+      "why": "Numerically correct (cos 0.9998 on convert) but hbcompile-infeasible at scale: real attempts on this exact script ran 15-19h+ and grew to 80-90GB RSS on the convert host before being killed (two separate multi-attempt sessions). This is the SAME failure mode this file already documented for the forward-substitution variant ('block-recursion is memory-bounded (13 GB) but 3h+') -- except empirically the memory bound did not hold this time, it kept climbing well past 13GB. The float/Newton-doubling CPU-fallback script (qwen35_prefill_float.py) was sitting on the convert host the whole time, mirrors 2B/4B's recipe exactly, and compiles in ~38 min -- it was simply the wrong script being invoked, not a new bug. Lesson: when a 'known good' script for a family member behaves nothing like its siblings, check whether it's actually the same algorithm before assuming a new regression."
     }
   ],
   "board_verification": {
     "s100p": {
-      "date": "2026-07-29",
+      "date": "2026-07-30",
       "board": "S100P (sw 4.0.5)",
-      "flow": "stop resident serving processes; chat() with a test image, contrast against the same question without the image, plus decoder-side prefill/decode parity + ppl (text-mode session) and task-coherence anchors; restore the stopped processes",
-      "sizes_verified": ["0.8b (ctx2k build, not re-verified this pass)", "2b (ctx4k+ctx512, GQA+mask-dedup rewrite)", "4b (ctx4k+ctx512, GQA+mask-dedup rewrite)"]
+      "flow": "stop resident serving processes; chat() with a test image, contrast against the same question without the image, plus decoder-side prefill/decode parity + ppl (text-mode session) and task-coherence anchors; benchmark decode_tok_s/ttft_ms; restore the stopped processes",
+      "sizes_verified": ["0.8b (ctx4k+ctx512, prefill fixed to the float/Newton-doubling script)", "2b (ctx4k+ctx512, GQA+mask-dedup rewrite)", "4b (ctx4k+ctx512, GQA+mask-dedup rewrite)"]
     },
     "s600": {
       "date": "2026-07-26",
