@@ -71,10 +71,19 @@ Two ways to get a `bllm.load()`-ready package:
 
 1. **Build from the recipe** — needs the x86 convert host + OE-LLM toolchain.
    See `CONVERSION.md` and each `models/<name>/`.
-2. **Download an A-tier package** — permissively-licensed models are published as
-   `bllm.load()`-ready tarballs (`model.hbm` + `tokenizer.json` + `model.json`,
-   hybrid also `embed_tokens.bin`, VLM also `visual.hbm`). Copyleft / non-commercial
-   weights are never redistributed as binaries — only the recipe.
+2. **Download an A-tier package** — permissively-licensed models are published on
+   Hugging Face as `bllm.load()`-ready directories (`model.hbm` + `tokenizer.json` +
+   `model.json`, hybrid also `embed_tokens.bin`, VLM also `visual.hbm`). Copyleft /
+   non-commercial weights are never redistributed as binaries — only the recipe.
+
+   | model | Hugging Face |
+   |---|---|
+   | Qwen3.5-2B (VLM, S100P, ctx4k/ctx512) | [ruisv/bllm-qwen3.5-2b](https://huggingface.co/ruisv/bllm-qwen3.5-2b) |
+   | Qwen3.5-4B (VLM, S100P, ctx4k/ctx512) | [ruisv/bllm-qwen3.5-4b](https://huggingface.co/ruisv/bllm-qwen3.5-4b) |
+
+   Each repo's `s100p/ctx4k/` or `s100p/ctx512/` subfolder is a self-contained,
+   ready-to-load package — download the one you want and point `bllm.load()` at it.
+   0.8B is not yet published this way; build it from the recipe in the meantime.
 
 Then on the board:
 

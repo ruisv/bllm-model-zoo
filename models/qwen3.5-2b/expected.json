@@ -15,13 +15,13 @@
       "cache_len": 4096,
       "board": "S100 / S100P",
       "bpu_cores": 1,
-      "prefill": "chunked-float-N32, same recipe as qwen3.5-0.8b",
+      "prefill": "chunked-float-N32; attention rewritten this release to GQA batched matmul (query grouped by kv-head, kv stays at NKV heads throughout) instead of expand_win broadcast, plus mask deduplication (causal mask is head-independent: [1,CL] broadcast, not [NHa,CL] duplicated) — both ported down from qwen3.5-0.8b's recipe.",
       "toolchain": {
         "board_system": "4.0.5",
         "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
       },
       "measured": {
-        "note": "S100P, 2026-07-26, performance mode set (0x2b047000/0x2b047004 = 0x99, re-written and read back this session). Measured two ways: (1) hrt_model_exec perf directly on the decode .hbm, 30 frames, single thread, dedicated core; (2) chat() through the image+text package (same decode sub-graph as the text-only package), 3 repeated runs, decode_tok_s identical to 2 decimal places across all 3 (13.21, 13.22, 13.22). Board had another model's serving process stopped for the duration, restored afterward.",
+        "note": "decode_tok_s/bpu_graph_ms/effective_weight_bandwidth_GBps below are carried over from the pre-GQA-rewrite baseline (S100P, 2026-07-26) — NOT yet re-measured against the current GQA+mask-dedup build. Board output was verified bit-identical to the prior baseline on the standard chat smoke test, so a throughput regression is not expected, but the number itself is stale and should be re-measured before being cited as current.",
         "decode_tok_s": 13.22,
         "all_bpu": true,
         "cpu_inference_time_cost_ms": 0.0,
@@ -29,13 +29,32 @@
         "fused_segments": 1,
         "effective_weight_bandwidth_GBps": 26.18,
         "hbm_mb": 1922.2,
-        "ppl": {"dataset": "wikitext2", "value": null}
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 51.2327,
+                "measured": "S100P, 2026-07-29, common/eval_ppl.py against the GQA+mask-dedup build"}
       },
       "task_metric": {
-        "name": "coherence-anchors",
-        "protocol": "EN factual (Paris), ZH factual (北京)",
-        "threshold": "all anchors pass",
-        "measured": "pass"
+        "name": "coherence-anchors + prefill/decode parity + image contrast",
+        "protocol": "common/eval_parity.py (prefill vs no-prefill, text-mode session on the same .hbm) — first-token match, 48-token greedy identical, control-ppl identical; with-image vs without-image contrast on a real photo (two brown bears), temp=0; EN factual, ZH factual, arithmetic; multi-turn name recall",
+        "threshold": "all pass",
+        "measured": "pass — parity PASS (S100P, 2026-07-29); image contrast PASS (correctly describes the photo with image, correctly declines without); EN/ZH/arithmetic anchors PASS; multi-turn memory correct (verified via the model's own visible reasoning trace — the final answer was cut off by the test harness's token budget when Qwen3.5's thinking mode ran long, a test-harness limit, not a model failure; NativeVlmSession currently has no set_thinking() to force a direct answer the way the text-only NativeSession does)"
+      }
+    },
+    {
+      "name": "qwen3.5-2b-ctx512-int8-s100",
+      "cache_len": 512,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32, same GQA batched-matmul + mask-dedup rewrite as the ctx4k variant above",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-29.",
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 50.8687}
+      },
+      "task_metric": {
+        "name": "coherence-anchors + prefill/decode parity + image contrast",
+        "protocol": "same as the ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass — parity PASS, image contrast PASS, EN/ZH/arithmetic PASS, multi-turn memory correct (same thinking-mode-truncation caveat as ctx4k)"
       }
     }
   ],
@@ -50,9 +69,9 @@
     }
   ],
   "board_verification": {
-    "date": "2026-07-26",
+    "date": "2026-07-29",
     "board": "S100P (sw 4.0.5)",
-    "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; hrt_model_exec perf on the decode graph directly + chat() (3 repeated runs); restore the stopped container",
+    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; restore the stopped processes",
     "decode_tok_s": 13.22
   }
 }

@@ -43,7 +43,7 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-26, performance mode set. Loaded in isolation (no other model resident; a different model's serving process was stopped for the duration and restored afterward). 3 repeated chat() runs: ttft_s 1.649-1.660s, decode_tok_s 13.21-13.22 (stable to 2 decimals). Contrast experiment (temp=0, same question): without an image the model answered a plain guess; with the image it answered specifically and correctly about the image's actual content — repeated across both the initial and re-measurement passes.",
+        "note": "ttft_s/decode_tok_s below are carried over from the pre-GQA-rewrite baseline (2026-07-26) — not yet re-measured against the current build (see qwen3.5-2b/expected.json for the rewrite itself and its 2026-07-29 formal re-verification: prefill/decode parity PASS, ppl 51.2327). Contrast experiment (temp=0, same question, real photo of two brown bears) re-run 2026-07-29 against the current build: without an image the model correctly declined ('no image provided'); with the image it correctly and specifically described the bears.",
         "load_s": 9.6,
         "ttft_s": 1.65,
         "decode_tok_s": 13.22,
@@ -51,10 +51,30 @@
         "answer_changes_with_vs_without_image": true
       },
       "task_metric": {
-        "name": "with-vs-without-image contrast",
-        "protocol": "same free-form question, temp=0, once with the test image attached and once without",
-        "threshold": "answers differ, and the with-image answer is factually correct about the image",
-        "measured": "pass"
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "with-vs-without-image contrast, same free-form question, temp=0, real photo; EN/ZH factual, arithmetic, multi-turn name recall; decoder-side prefill/decode parity via common/eval_parity.py against a text-mode view of the same .hbm (see qwen3.5-2b/expected.json)",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-29) — image contrast pass, EN/ZH/arithmetic anchors pass, multi-turn memory correct (verified via the model's visible reasoning trace; the test harness's token budget cut off the polished final answer when thinking ran long — NativeVlmSession has no set_thinking() yet to force a direct answer, see qwen3.5-2b/expected.json), parity PASS"
+      }
+    },
+    {
+      "name": "qwen3.5-2b-vlm320-ctx512-int8-s100",
+      "decoder": "qwen3.5-2b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 512,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-29. New this release — a shorter KV window for short-context / faster-decode use. Not yet independently timed (ttft_s/decode_tok_s); see qwen3.5-2b/expected.json for ppl (50.8687).",
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "same as the ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-29) — same results as ctx4k (equivalent answer on the same photo, EN/ZH/arithmetic pass, memory correct with the same thinking-mode-truncation caveat, parity PASS)"
       }
     },
     {
@@ -66,7 +86,7 @@
       "board": "S100P",
       "toolchain": {"board_system": "4.0.5"},
       "measured": {
-        "note": "S100P, 2026-07-26, performance mode set. Same isolation protocol and contrast experiment as the 2B variant. 3 repeated chat() runs: ttft_s 3.44-3.45s, decode_tok_s 3.29 identical across all 3.",
+        "note": "ttft_s/decode_tok_s below are carried over from the pre-rewrite baseline (2026-07-26). This release rewrites 4B's attention from expand_win to GQA batched matmul + mask dedup, which — UNLIKE 0.8b/2b — introduces new int16 quantisation on the attention matmul that the old expand_win path never had; board output is not byte-identical to the pre-rewrite baseline (still coherent/correct). Full caveat and the offline exactness check for the batched-matmul math itself are in qwen3.5-4b/expected.json. This card's 2026-07-29 contrast re-run against the CURRENT build: without an image the model correctly declined; with the image it correctly identified two brown bears (grizzly subspecies).",
         "load_s": 13.96,
         "ttft_s": 3.45,
         "decode_tok_s": 3.29,
@@ -74,10 +94,30 @@
         "answer_changes_with_vs_without_image": true
       },
       "task_metric": {
-        "name": "with-vs-without-image contrast",
-        "protocol": "same free-form question, temp=0, once with the test image attached and once without",
-        "threshold": "answers differ, and the with-image answer is factually correct about the image",
-        "measured": "pass"
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "same as the 2B ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-29) — image contrast pass, EN/ZH/arithmetic anchors pass, multi-turn memory correct (same thinking-mode-truncation caveat as 2B), parity PASS. This is the formal gate that actually clears the quantisation change noted above — the offline algebraic check alone (cosine 1.0000001) is not a substitute, see qwen3.5-4b/expected.json."
+      }
+    },
+    {
+      "name": "qwen3.5-4b-vlm320-ctx512-int8-s100",
+      "decoder": "qwen3.5-4b",
+      "bucket_px": 320,
+      "vision_tokens": 100,
+      "cache_len": 512,
+      "board": "S100P",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-29. New this release. Not yet independently timed (ttft_s/decode_tok_s); see qwen3.5-4b/expected.json for ppl (35.0939).",
+        "answer_with_image_correct": true,
+        "answer_changes_with_vs_without_image": true
+      },
+      "task_metric": {
+        "name": "with-vs-without-image contrast + prefill/decode parity + task anchors",
+        "protocol": "same as the ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass (2026-07-29) — same results as ctx4k, parity PASS"
       }
     },
     {
@@ -143,10 +183,10 @@
   ],
   "board_verification": {
     "s100p": {
-      "date": "2026-07-26",
+      "date": "2026-07-29",
       "board": "S100P (sw 4.0.5)",
-      "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; chat() with a test image, contrast against the same question without the image; restore the stopped container",
-      "sizes_verified": ["0.8b", "2b", "4b"]
+      "flow": "stop resident serving processes; chat() with a test image, contrast against the same question without the image, plus decoder-side prefill/decode parity + ppl (text-mode session) and task-coherence anchors; restore the stopped processes",
+      "sizes_verified": ["0.8b (ctx2k build, not re-verified this pass)", "2b (ctx4k+ctx512, GQA+mask-dedup rewrite)", "4b (ctx4k+ctx512, GQA+mask-dedup rewrite)"]
     },
     "s600": {
       "date": "2026-07-26",

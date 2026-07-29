@@ -33,3 +33,7 @@ __pycache__/
 
 # Local machine paths / source locations (mirrors bcdl's local.env convention)
 local.env
+
+# Staging area for Hugging Face model-card drafts (published directly to HF,
+# not part of this repo's own publishing contract — see PUBLISHING.md)
+.hf_staging/

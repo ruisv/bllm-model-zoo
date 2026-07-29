@@ -15,13 +15,13 @@
       "cache_len": 4096,
       "board": "S100 / S100P",
       "bpu_cores": 1,
-      "prefill": "chunked-float-N32; head-splitting adapted for the decoupled GDN heads, chunked-delta-rule math itself unchanged from qwen3.5-0.8b/2b (see README)",
+      "prefill": "chunked-float-N32; head-splitting adapted for the decoupled GDN heads, chunked-delta-rule math itself unchanged from qwen3.5-0.8b/2b (see README). This release also rewrites attention from expand_win broadcast to GQA batched matmul + mask deduplication, ported down from qwen3.5-0.8b — SEE CAVEAT below, this is the one variant in the family where that rewrite is not a pure no-op.",
       "toolchain": {
         "board_system": "4.0.5",
         "note": "Recorded so a future regression can be attributed. Host toolchain and board HBRT must match."
       },
       "measured": {
-        "note": "S100P, 2026-07-26, performance mode set (0x2b047000/0x2b047004 = 0x99, re-written and read back this session). Measured two ways: (1) hrt_model_exec perf directly on the decode .hbm, 20 frames, single thread, dedicated core; (2) chat() through the image+text package (same decode sub-graph as the text-only package), 3 repeated runs, decode_tok_s identical to 2 decimal places across all 3 (3.29 each run). Board had another model's serving process stopped for the duration, restored afterward.",
+        "note": "decode_tok_s/bpu_graph_ms/effective_weight_bandwidth_GBps below are carried over from the PRE-rewrite baseline (S100P, 2026-07-26) — not yet re-measured against the current GQA+mask-dedup build; a throughput regression is not expected (same op count, less DMA) but the number is stale.\n\nCAVEAT (unlike 0.8b/2b, where the GQA rewrite reproduces the prior build's output bit-for-bit): 4B's original expand_win attention had NO int16 quantisation on the attention score/output matmul; the ported GQA path wraps that matmul in int16 like 0.8b/2b already did, since it reuses their code path. Board output after the rewrite is NOT byte-identical to the pre-rewrite baseline (e.g. one prior answer mentioned 'one adult and one cub', the new build's phrasing omits that detail) — verified this is a real, expected precision perturbation from the newly-added quantisation, not a bug: the batched-matmul math itself was checked algebraically exact against the old expand_win math offline (numpy, exact 4B head config NHa=16/NKV=4/HDa=256/REP=4/CL=4096, cosine 1.0000001, max abs diff 2.38e-7). This release's formal acceptance run (parity/ppl/image-contrast/anchors, all below) is what actually clears this build for use, not the offline math check alone — a build can be algebraically exact and still misbehave downstream, so the two aren't a substitute for each other.",
         "decode_tok_s": 3.29,
         "all_bpu": true,
         "cpu_inference_time_cost_ms": 0.0,
@@ -29,13 +29,32 @@
         "fused_segments": 1,
         "effective_weight_bandwidth_GBps": 14.28,
         "hbm_mb": 4280.9,
-        "ppl": {"dataset": "wikitext2", "value": null}
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 35.2907,
+                "measured": "S100P, 2026-07-29, common/eval_ppl.py against the GQA+mask-dedup build"}
       },
       "task_metric": {
-        "name": "coherence-anchors",
-        "protocol": "EN factual, ZH factual",
-        "threshold": "all anchors pass",
-        "measured": "pass"
+        "name": "coherence-anchors + prefill/decode parity + image contrast",
+        "protocol": "common/eval_parity.py (prefill vs no-prefill, text-mode session on the same .hbm) — first-token match, 48-token greedy identical, control-ppl identical; with-image vs without-image contrast on a real photo (two brown bears), temp=0; EN factual, ZH factual, arithmetic; multi-turn name recall",
+        "threshold": "all pass",
+        "measured": "pass — parity PASS (S100P, 2026-07-29, first-token match + 48-token greedy identical + control-ppl identical — this passing despite the CAVEAT above because parity compares the new build against ITSELF with/without the prefill graph, not against the old pre-rewrite build); image contrast PASS (correctly identifies two brown bears / grizzly subspecies with image, correctly declines without); EN/ZH/arithmetic anchors PASS; multi-turn memory correct (verified via the model's own visible reasoning trace, same thinking-mode-truncation caveat as qwen3.5-2b)"
+      }
+    },
+    {
+      "name": "qwen3.5-4b-ctx512-int8-s100",
+      "cache_len": 512,
+      "board": "S100 / S100P",
+      "bpu_cores": 1,
+      "prefill": "chunked-float-N32, same GQA batched-matmul + mask-dedup rewrite and the same quantisation caveat as the ctx4k variant above",
+      "toolchain": {"board_system": "4.0.5"},
+      "measured": {
+        "note": "S100P, 2026-07-29.",
+        "ppl": {"dataset": "custom EN+code sample (common/eval_ppl.py default, 71 tokens)", "value": 35.0939}
+      },
+      "task_metric": {
+        "name": "coherence-anchors + prefill/decode parity + image contrast",
+        "protocol": "same as the ctx4k variant",
+        "threshold": "all pass",
+        "measured": "pass — parity PASS, image contrast PASS (same photo, equivalent answer to ctx4k), EN/ZH/arithmetic PASS, multi-turn memory correct (same thinking-mode-truncation caveat)"
       }
     }
   ],
@@ -58,9 +77,9 @@
     }
   ],
   "board_verification": {
-    "date": "2026-07-26",
+    "date": "2026-07-29",
     "board": "S100P (sw 4.0.5)",
-    "flow": "docker stop the resident serving container; bllm.load(dir) in isolation; hrt_model_exec perf on the decode graph directly + chat() (3 repeated runs); restore the stopped container",
+    "flow": "stop resident serving processes; run common/eval_parity.py + common/eval_ppl.py against a text-mode view of the package (same model.hbm/model_prefill.hbm, model.json with the visual key dropped — the decoder graph is unchanged by adding vision, see qwen3.5-vlm recipe); run image-contrast + task-coherence anchors through the actual NativeVlmSession; restore the stopped processes",
     "decode_tok_s": 3.29
   }
 }
