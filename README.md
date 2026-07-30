@@ -50,7 +50,7 @@ licences.** A compiled `.hbm` is a derivative of upstream weights.
 | GLM-Edge | dense | native | planned | — |
 | Qwen2.5-1.5B / 7B | dense | oellm-official | recipe | 24.5 / 6.4 tok/s |
 | Qwen2.5-Omni-3B | omni (text+image+audio+video) | oellm-official | recipe | 14 tok/s |
-| **Qwen3.5-VLM (0.8B/2B/4B, 320/448px)** | hybrid + vision | native | complete (S100P); recipe (S600, load-verified) | TTFT 1.23 s (0.8B/320px) |
+| **Qwen3.5-VLM (0.8B/2B/4B, 320/448px)** | hybrid + vision | native | complete (S100P); recipe (S600, load-verified) | TTFT 1.19 s (0.8B/320px/ctx512) |
 
 - **origin** — `native` = self-converted (an architecture the official OE-LLM
   toolchain doesn't cover; the value of this repo). `oellm-official` = the
@@ -78,12 +78,12 @@ Two ways to get a `bllm.load()`-ready package:
 
    | model | Hugging Face |
    |---|---|
+   | Qwen3.5-0.8B (VLM, S100P, ctx4k/ctx512) | [ruisv/bllm-qwen3.5-0.8b](https://huggingface.co/ruisv/bllm-qwen3.5-0.8b) |
    | Qwen3.5-2B (VLM, S100P, ctx4k/ctx512) | [ruisv/bllm-qwen3.5-2b](https://huggingface.co/ruisv/bllm-qwen3.5-2b) |
    | Qwen3.5-4B (VLM, S100P, ctx4k/ctx512) | [ruisv/bllm-qwen3.5-4b](https://huggingface.co/ruisv/bllm-qwen3.5-4b) |
 
    Each repo's `s100p/ctx4k/` or `s100p/ctx512/` subfolder is a self-contained,
    ready-to-load package — download the one you want and point `bllm.load()` at it.
-   0.8B is not yet published this way; build it from the recipe in the meantime.
 
 Then on the board:
 
