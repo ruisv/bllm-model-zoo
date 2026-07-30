@@ -34,6 +34,10 @@ __pycache__/
 # Local machine paths / source locations (mirrors bcdl's local.env convention)
 local.env
 
+# This repo's own publishing contract — its header says "private — never
+# published"; it was tracked+pushed by mistake since 2026-07-23. Local only.
+PUBLISHING.md
+
 # Staging area for Hugging Face model-card drafts (published directly to HF,
 # not part of this repo's own publishing contract — see PUBLISHING.md)
 .hf_staging/
